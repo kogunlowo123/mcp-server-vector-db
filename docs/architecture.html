@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>mcp-server-vector-db — Architecture</title>
+<style>
+:root{--ink:#0b0c0b;--paper:#f5f2eb;--accent:#c8420a;--accent2:#e8720c;--mono:'Courier New',monospace;--sans:system-ui,-apple-system,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--ink);color:var(--paper);font-family:var(--mono);font-size:13px;line-height:1.7}
+.container{max-width:1100px;margin:0 auto;padding:32px 48px}
+header{border-bottom:2px solid var(--accent);padding-bottom:24px;margin-bottom:32px}
+h1{font-size:28px;font-family:var(--sans);font-weight:700}h1 em{font-style:normal;color:var(--accent)}
+.meta{font-size:10px;color:rgba(255,255,255,.4);margin-top:6px}
+.badge{display:inline-block;font-size:9px;padding:2px 8px;border-radius:2px;margin-right:4px}
+.badge-lang{background:rgba(200,66,10,.2);color:var(--accent);border:1px solid rgba(200,66,10,.4)}
+.badge-cloud{background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.1)}
+.badge-cat{background:rgba(232,114,12,.15);color:var(--accent2);border:1px solid rgba(232,114,12,.3)}
+h2{font-size:16px;font-family:var(--sans);color:var(--accent);margin:32px 0 12px;padding-bottom:6px;border-bottom:1px solid rgba(200,66,10,.3);text-transform:uppercase}
+p,li{font-size:12px;line-height:1.8;color:rgba(255,255,255,.75)}
+ul{padding-left:20px;margin:8px 0}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin:16px 0}
+.card{border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:16px;background:rgba(255,255,255,.02)}
+.card-label{font-size:9px;color:rgba(255,255,255,.4);text-transform:uppercase}
+.card-value{font-size:14px;font-weight:700}
+.flow-box{display:inline-block;border:1px solid var(--accent);border-radius:3px;padding:6px 14px;margin:4px;font-size:10px;background:rgba(200,66,10,.08)}
+.flow-arrow{color:var(--accent);margin:0 8px;font-size:14px}
+.checklist{list-style:none;padding:0}.checklist li{padding:4px 0;font-size:11px}.checklist li::before{content:'✓ ';color:var(--accent);font-weight:bold}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:11px}
+th{text-align:left;padding:8px;border-bottom:2px solid var(--accent);color:var(--accent);font-size:10px;text-transform:uppercase}
+td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06);color:rgba(255,255,255,.7)}
+footer{margin-top:48px;padding-top:16px;border-top:2px solid var(--accent);font-size:9px;color:rgba(255,255,255,.3)}
+footer a{color:var(--accent);text-decoration:none}
+@media print{body{background:#fff;color:#000}h2{color:#c8420a}}
+@media(max-width:768px){.container{padding:16px}.card-grid{grid-template-columns:1fr}}
+</style></head><body><div class="container">
+
+<header>
+  <h1><em>mcp-server-vector-db</em> — Architecture</h1>
+  <div class="meta">v1.0.0 · Generated 2026-03-15 · MCP Server for Vector Database Operations</div>
+  <div style="margin-top:8px">
+    <span class="badge badge-lang">TypeScript</span>
+    <span class="badge badge-lang">Node.js 20</span>
+    <span class="badge badge-cat">MCP Server</span>
+    <span class="badge badge-cat">Vector Database</span>
+    <span class="badge badge-cloud">Pinecone</span>
+    <span class="badge badge-cloud">Weaviate</span>
+    <span class="badge badge-cloud">Qdrant</span>
+    <span class="badge badge-cloud">ChromaDB</span>
+  </div>
+</header>
+
+<h2>Executive Summary</h2>
+<p>mcp-server-vector-db is a Model Context Protocol server that provides a unified interface to four vector database providers — Pinecone, Weaviate, Qdrant, and ChromaDB — through six MCP tools. The architecture uses a provider abstraction pattern: a VectorProvider interface defines operations (upsert, query, delete, list/create/stats collections) and four concrete implementations adapt each database's native SDK. The active provider is selected at runtime via the VECTOR_PROVIDER environment variable, with lazy initialization on first tool call. This enables AI assistants to perform semantic search, manage embeddings, and administer vector collections without provider-specific knowledge.</p>
+
+<h2>Overview</h2>
+<div class="card-grid">
+  <div class="card"><div class="card-label">Language</div><div class="card-value">TypeScript (ES2022)</div></div>
+  <div class="card"><div class="card-label">Runtime</div><div class="card-value">Node.js &ge; 18</div></div>
+  <div class="card"><div class="card-label">Category</div><div class="card-value">MCP Server / AI Infrastructure</div></div>
+  <div class="card"><div class="card-label">Transport</div><div class="card-value">stdio</div></div>
+  <div class="card"><div class="card-label">Tools Registered</div><div class="card-value">6</div></div>
+  <div class="card"><div class="card-label">Providers</div><div class="card-value">4 (Pinecone, Weaviate, Qdrant, ChromaDB)</div></div>
+  <div class="card"><div class="card-label">Source Files</div><div class="card-value">13 (.ts)</div></div>
+  <div class="card"><div class="card-label">Dependencies</div><div class="card-value">@modelcontextprotocol/sdk, @pinecone-database/pinecone, chromadb, @qdrant/js-client-rest, weaviate-ts-client, zod</div></div>
+</div>
+
+<h2>Architecture Diagram</h2>
+<div style="text-align:center;padding:24px 0">
+  <div class="flow-box">AI Assistant / Claude</div>
+  <span class="flow-arrow">&#8594;</span>
+  <div class="flow-box">StdioServerTransport</div>
+  <span class="flow-arrow">&#8594;</span>
+  <div class="flow-box">McpServer (index.ts)</div>
+  <br/><br/>
+  <span class="flow-arrow">&#8595;</span>
+  <br/><br/>
+  <div class="flow-box">upsert_vectors</div>
+  <div class="flow-box">query_vectors</div>
+  <div class="flow-box">delete_vectors</div>
+  <br/>
+  <div class="flow-box">list_collections</div>
+  <div class="flow-box">create_collection</div>
+  <div class="flow-box">get_collection_stats</div>
+  <br/><br/>
+  <span class="flow-arrow">&#8595;</span>
+  <span style="color:var(--accent);font-size:10px;margin:0 4px">getProvider()</span>
+  <br/><br/>
+  <div class="flow-box">VectorProvider Interface</div>
+  <br/><br/>
+  <span class="flow-arrow">&#8595;</span>
+  <br/><br/>
+  <div class="flow-box">PineconeProvider</div>
+  <div class="flow-box">WeaviateProvider</div>
+  <div class="flow-box">QdrantProvider</div>
+  <div class="flow-box">ChromaDBProvider</div>
+</div>
+
+<h2>Component Breakdown</h2>
+<table>
+  <tr><th>File</th><th>Component</th><th>Purpose</th><th>Key Details</th></tr>
+  <tr><td>src/index.ts</td><td>Server Entry</td><td>Creates McpServer, lazy-initializes provider from env vars, registers 6 tools</td><td>Provider selected via VECTOR_PROVIDER env var</td></tr>
+  <tr><td>src/providers/types.ts</td><td>VectorProvider Interface</td><td>Defines abstract interface: upsert, query, deleteVectors, listCollections, createCollection, getCollectionStats</td><td>Also defines VectorRecord, QueryResult, CollectionInfo, CollectionStats</td></tr>
+  <tr><td>src/providers/index.ts</td><td>Provider Factory</td><td>createProvider() factory function routing by ProviderName union type</td><td>Validates required config per provider</td></tr>
+  <tr><td>src/providers/pinecone.ts</td><td>PineconeProvider</td><td>Wraps @pinecone-database/pinecone SDK; serverless index creation on AWS us-east-1</td><td>Requires apiKey</td></tr>
+  <tr><td>src/providers/weaviate.ts</td><td>WeaviateProvider</td><td>Wraps weaviate-ts-client; batch upsert via objectsBatcher, GraphQL query/aggregate</td><td>Requires host, optional apiKey</td></tr>
+  <tr><td>src/providers/qdrant.ts</td><td>QdrantProvider</td><td>Wraps @qdrant/js-client-rest; uses search() for queries, wait:true for writes</td><td>Requires url, optional apiKey</td></tr>
+  <tr><td>src/providers/chromadb.ts</td><td>ChromaDBProvider</td><td>Wraps chromadb client; converts distance to similarity score (1 - distance)</td><td>Defaults to http://localhost:8000</td></tr>
+  <tr><td>src/tools/upsert_vectors.ts</td><td>upsert_vectors</td><td>Insert or update vectors with optional metadata</td><td>Params: collection, vectors[{id, values, metadata}]</td></tr>
+  <tr><td>src/tools/query_vectors.ts</td><td>query_vectors</td><td>Similarity search with topK, filter, and metadata inclusion</td><td>Params: collection, vector, topK (default 10), filter, includeMetadata</td></tr>
+  <tr><td>src/tools/delete_vectors.ts</td><td>delete_vectors</td><td>Delete vectors by IDs</td><td>Params: collection, ids (min 1)</td></tr>
+  <tr><td>src/tools/list_collections.ts</td><td>list_collections</td><td>List all collections in the configured provider</td><td>No params</td></tr>
+  <tr><td>src/tools/create_collection.ts</td><td>create_collection</td><td>Create collection with dimension and distance metric</td><td>Params: name, dimension, metric (default cosine)</td></tr>
+  <tr><td>src/tools/get_collection_stats.ts</td><td>get_collection_stats</td><td>Get vector count, dimension, status for a collection</td><td>Params: collection</td></tr>
+</table>
+
+<h2>Data / Request Flow</h2>
+<ol>
+  <li>AI assistant sends MCP tool-call request over <strong>stdin</strong></li>
+  <li><strong>StdioServerTransport</strong> deserializes JSON-RPC message</li>
+  <li><strong>McpServer</strong> routes to matching tool handler</li>
+  <li>Tool handler calls <strong>getProvider()</strong> — lazy singleton that reads VECTOR_PROVIDER, VECTOR_API_KEY, VECTOR_HOST, VECTOR_URL from environment</li>
+  <li><strong>createProvider()</strong> factory instantiates the correct provider class (validates required config)</li>
+  <li>Provider method is called (e.g., <code>provider.query(collection, vector, topK, filter)</code>)</li>
+  <li>Provider translates to native SDK call (Pinecone Index.query, Weaviate GraphQL, Qdrant search, ChromaDB collection.query)</li>
+  <li>Results are normalized to standard types (QueryResult, CollectionInfo, etc.) and returned as JSON</li>
+</ol>
+
+<h2>Security Controls</h2>
+<ul>
+  <li><strong>Input validation:</strong> Zod schemas on all tools; vectors array validated with nested object schemas</li>
+  <li><strong>API key management:</strong> Provider credentials read from environment variables, never hardcoded</li>
+  <li><strong>Provider isolation:</strong> Each provider validates required config (apiKey, host, url) at creation time</li>
+  <li><strong>Lazy initialization:</strong> Provider created only on first tool call, not at server startup</li>
+  <li><strong>Error boundaries:</strong> Every tool has try/catch returning isError:true with descriptive messages</li>
+  <li><strong>Minimal container:</strong> node:20-alpine with only production dependencies</li>
+  <li><strong>Score normalization:</strong> ChromaDB converts distance to similarity (1 - distance) to match other providers</li>
+</ul>
+
+<h2>Industry Adaptation</h2>
+<table>
+  <tr><th>Industry</th><th>Use Case</th><th>Provider</th><th>Relevant Tools</th></tr>
+  <tr><td>RAG / AI Applications</td><td>Semantic search over document embeddings</td><td>Pinecone, Qdrant</td><td>upsert_vectors, query_vectors</td></tr>
+  <tr><td>E-commerce</td><td>Product similarity and recommendation engines</td><td>Weaviate</td><td>query_vectors, create_collection</td></tr>
+  <tr><td>Research / Prototyping</td><td>Local vector search without cloud dependencies</td><td>ChromaDB</td><td>All tools</td></tr>
+  <tr><td>Healthcare / Biotech</td><td>Embedding-based similarity search on medical literature</td><td>Pinecone, Qdrant</td><td>upsert_vectors, query_vectors</td></tr>
+  <tr><td>Knowledge Management</td><td>Organizational knowledge base with vector retrieval</td><td>Any</td><td>All tools</td></tr>
+</table>
+
+<h2>Production Readiness Checklist</h2>
+<ul class="checklist">
+  <li>Zod schema validation on all tool inputs including nested vector arrays</li>
+  <li>Provider abstraction with interface contract (VectorProvider)</li>
+  <li>Factory pattern with config validation per provider</li>
+  <li>Lazy provider initialization (singleton)</li>
+  <li>Structured error handling on every tool</li>
+  <li>Multi-stage Docker build with production-only dependencies</li>
+  <li>Environment-based configuration (no hardcoded credentials)</li>
+  <li>TypeScript strict mode with declaration maps</li>
+</ul>
+
+<h2>Config Reference</h2>
+<table>
+  <tr><th>Variable</th><th>Scope</th><th>Description</th><th>Default</th></tr>
+  <tr><td>VECTOR_PROVIDER</td><td>Env var</td><td>Active provider: pinecone, weaviate, qdrant, chromadb</td><td>chromadb</td></tr>
+  <tr><td>VECTOR_API_KEY</td><td>Env var</td><td>API key for Pinecone, Weaviate, or Qdrant</td><td>None</td></tr>
+  <tr><td>VECTOR_HOST</td><td>Env var</td><td>Host for Weaviate or ChromaDB</td><td>http://localhost:8000 (ChromaDB)</td></tr>
+  <tr><td>VECTOR_URL</td><td>Env var</td><td>URL for Qdrant REST endpoint</td><td>None</td></tr>
+  <tr><td>NODE_ENV</td><td>Env var</td><td>Node.js environment</td><td>production (Docker)</td></tr>
+</table>
+
+<h2>Deployment</h2>
+<ul>
+  <li><strong>Docker:</strong> <code>docker build -t mcp-server-vector-db .</code> — multi-stage alpine build, defaults to ChromaDB at localhost:8000</li>
+  <li><strong>Standalone:</strong> <code>npm ci && npm run build && VECTOR_PROVIDER=pinecone VECTOR_API_KEY=xxx node dist/index.js</code></li>
+  <li><strong>Dev mode:</strong> <code>npm run dev</code> (ts-node)</li>
+  <li><strong>With ChromaDB:</strong> Run ChromaDB container alongside: <code>docker run -p 8000:8000 chromadb/chroma</code></li>
+  <li><strong>MCP client:</strong> Configure stdio transport with appropriate VECTOR_* environment variables</li>
+</ul>
+
+<h2>Links</h2>
+<ul>
+  <li>MCP SDK: <a href="https://github.com/modelcontextprotocol/sdk">github.com/modelcontextprotocol/sdk</a></li>
+  <li>Pinecone: <a href="https://docs.pinecone.io">docs.pinecone.io</a></li>
+  <li>Weaviate: <a href="https://weaviate.io/developers/weaviate">weaviate.io/developers/weaviate</a></li>
+  <li>Qdrant: <a href="https://qdrant.tech/documentation">qdrant.tech/documentation</a></li>
+  <li>ChromaDB: <a href="https://docs.trychroma.com">docs.trychroma.com</a></li>
+</ul>
+
+<footer>
+  mcp-server-vector-db v1.0.0 · Architecture document generated 2026-03-15 · <a href="https://github.com/kogunlowo123">kogunlowo123</a>
+</footer>
+
+</div></body></html>
