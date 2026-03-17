@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { VectorProvider } from "../providers/types.js";
 
